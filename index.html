@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Vehicle Health Monitoring</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
+<style>
+:root{--bg:#0b1020;--panel:#121a2d;--text:#edf3ff;--muted:#94a3b8;--border:#263453;--ok:#22c55e;--bad:#ef4444}
+*{box-sizing:border-box}body{margin:0;font-family:Inter,system-ui,sans-serif;background:var(--bg);color:var(--text)}
+.wrap{max-width:1450px;margin:auto;padding:24px}header{display:flex;justify-content:space-between;align-items:center;gap:20px;margin-bottom:22px;flex-wrap:wrap}
+h1{margin:0;font-size:28px}.subtitle{color:var(--muted);margin-top:5px}.status{display:flex;align-items:center;gap:9px;background:var(--panel);border:1px solid var(--border);padding:10px 14px;border-radius:999px}
+.dot{width:10px;height:10px;border-radius:50%;background:var(--bad)}.dot.connected{background:var(--ok);box-shadow:0 0 10px rgba(34,197,94,.7)}
+.cards{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:14px;margin-bottom:18px}
+.card,.chart-card{background:var(--panel);border:1px solid var(--border);border-radius:14px}
+.card{padding:17px}.label{color:var(--muted);font-size:13px}.value{font-size:27px;font-weight:700;margin-top:8px}.unit{font-size:14px;color:var(--muted);font-weight:500}
+.charts{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px}.chart-card{padding:16px;min-width:0}.chart-title{font-weight:650;margin-bottom:10px}.canvas-wrap{height:260px;position:relative}
+.footer{margin-top:16px;color:var(--muted);font-size:13px;display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap}
+@media(max-width:900px){.cards{grid-template-columns:repeat(2,1fr)}.charts{grid-template-columns:1fr}}
+@media(max-width:520px){.wrap{padding:14px}.cards{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<div class="wrap">
+<header>
+<div><h1>Vehicle Health Monitoring</h1><div class="subtitle">ESP32 → WebSocket → live dashboard</div></div>
+<div class="status"><span id="dot" class="dot"></span><span id="connectionText">Disconnected</span></div>
+</header>
+
+<section class="cards">
+<div class="card"><div class="label">Ambient Temperature</div><div class="value" id="temperature">-- <span class="unit">°C</span></div></div>
+<div class="card"><div class="label">Vibration</div><div class="value" id="vibration">--</div></div>
+<div class="card"><div class="label">Battery Voltage</div><div class="value" id="batteryVoltage">-- <span class="unit">V</span></div></div>
+<div class="card"><div class="label">Engine Temperature</div><div class="value" id="engineTemp">-- <span class="unit">°C</span></div></div>
+<div class="card"><div class="label">Engine RPM</div><div class="value" id="rpm">-- <span class="unit">RPM</span></div></div>
+<div class="card"><div class="label">Battery Current</div><div class="value" id="batteryCurrent">-- <span class="unit">A</span></div></div>
+<div class="card"><div class="label">Vehicle Speed</div><div class="value" id="speed">-- <span class="unit">km/h</span></div></div>
+<div class="card"><div class="label">Humidity</div><div class="value" id="humidity">-- <span class="unit">%</span></div></div>
+</section>
+
+<section class="charts">
+<div class="chart-card"><div class="chart-title">Ambient Temperature</div><div class="canvas-wrap"><canvas id="temperatureChart"></canvas></div></div>
+<div class="chart-card"><div class="chart-title">Vibration</div><div class="canvas-wrap"><canvas id="vibrationChart"></canvas></div></div>
+<div class="chart-card"><div class="chart-title">Battery Voltage</div><div class="canvas-wrap"><canvas id="batteryVoltageChart"></canvas></div></div>
+<div class="chart-card"><div class="chart-title">Engine Temperature</div><div class="canvas-wrap"><canvas id="engineTempChart"></canvas></div></div>
+<div class="chart-card"><div class="chart-title">Engine RPM</div><div class="canvas-wrap"><canvas id="rpmChart"></canvas></div></div>
+<div class="chart-card"><div class="chart-title">Battery Current</div><div class="canvas-wrap"><canvas id="batteryCurrentChart"></canvas></div></div>
+<div class="chart-card"><div class="chart-title">Vehicle Speed</div><div class="canvas-wrap"><canvas id="speedChart"></canvas></div></div>
+<div class="chart-card"><div class="chart-title">Humidity</div><div class="canvas-wrap"><canvas id="humidityChart"></canvas></div></div>
+</section>
+
+<div class="footer"><span id="lastUpdate">Last update: --</span><span>Showing the latest 60 samples</span></div>
+</div>
+
+<script>
+const WS_URL="wss://YOUR-RENDER-SERVICE.onrender.com/ws?role=dashboard";
+const MAX_POINTS=60;
+const definitions={
+temperature:["temperatureChart","°C"],vibration:["vibrationChart",""],
+batteryVoltage:["batteryVoltageChart","V"],engineTemp:["engineTempChart","°C"],
+rpm:["rpmChart","RPM"],batteryCurrent:["batteryCurrentChart","A"],
+speed:["speedChart","km/h"],humidity:["humidityChart","%"]
+};
+const charts={};
+
+function createChart(canvasId,label,unit){
+return new Chart(document.getElementById(canvasId),{
+type:"line",data:{labels:[],datasets:[{label:label+(unit?" ("+unit+")":""),data:[],borderWidth:2,pointRadius:0,tension:.25}]},
+options:{responsive:true,maintainAspectRatio:false,animation:false,
+scales:{x:{ticks:{color:"#94a3b8",maxTicksLimit:8},grid:{color:"#263453"}},
+y:{ticks:{color:"#94a3b8"},grid:{color:"#263453"}}},
+plugins:{legend:{labels:{color:"#edf3ff"}}}}
+});
+}
+Object.entries(definitions).forEach(([key,[canvas,unit]])=>charts[key]=createChart(canvas,key,unit));
+
+function setValue(id,value,decimals=2){
+const unit=definitions[id][1];
+document.getElementById(id).innerHTML=Number(value).toFixed(decimals)+(unit?' <span class="unit">'+unit+'</span>':'');
+}
+function addPoint(key,time,value){
+const c=charts[key];c.data.labels.push(time);c.data.datasets[0].data.push(value);
+if(c.data.labels.length>MAX_POINTS){c.data.labels.shift();c.data.datasets[0].data.shift();}
+c.update("none");
+}
+function handleData(d){
+const keys=["time","temperature","vibration","batteryVoltage","engineTemp","rpm","batteryCurrent","speed","humidity"];
+if(!keys.every(k=>Number.isFinite(Number(d[k]))))return;
+const time=Number(d.time).toFixed(0)+"s";
+setValue("temperature",d.temperature);setValue("vibration",d.vibration);setValue("batteryVoltage",d.batteryVoltage);
+setValue("engineTemp",d.engineTemp);setValue("rpm",d.rpm,0);setValue("batteryCurrent",d.batteryCurrent);
+setValue("speed",d.speed);setValue("humidity",d.humidity);
+Object.keys(definitions).forEach(k=>addPoint(k,time,Number(d[k])));
+document.getElementById("lastUpdate").textContent="Last update: "+new Date().toLocaleTimeString();
+}
+let reconnectDelay=1000;
+function connect(){
+document.getElementById("connectionText").textContent="Connecting...";
+const socket=new WebSocket(WS_URL);
+socket.onopen=()=>{reconnectDelay=1000;document.getElementById("dot").classList.add("connected");document.getElementById("connectionText").textContent="Connected";};
+socket.onmessage=e=>{try{const d=JSON.parse(e.data);if(d.type==="sensor")handleData(d);}catch(err){console.error(err);}};
+socket.onclose=()=>{document.getElementById("dot").classList.remove("connected");document.getElementById("connectionText").textContent="Disconnected";setTimeout(connect,reconnectDelay);reconnectDelay=Math.min(reconnectDelay*2,30000);};
+socket.onerror=()=>socket.close();
+}
+connect();
+</script>
+</body>
+</html>
