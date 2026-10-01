@@ -28,7 +28,15 @@ const MQTT_BROKER =
     process.env.MQTT_BROKER ||
     "mqtt://localhost:1883";
 
-const MQTT_TOPIC = "vehicle/can";
+const MQTT_TOPIC =
+    process.env.MQTT_TOPIC ||
+    "vehicle/can";
+
+const MQTT_USERNAME =
+    process.env.MQTT_USERNAME || "";
+
+const MQTT_PASSWORD =
+    process.env.MQTT_PASSWORD || "";
 
 // ============================================================
 // POSTGRESQL / NEON DATABASE
@@ -161,16 +169,19 @@ const mqttClient = mqtt.connect(
                 .toString(16)
                 .substring(2),
 
+        username: MQTT_USERNAME,
+
+        password: MQTT_PASSWORD,
+
         clean: true,
 
         reconnectPeriod: 1000,
 
-        connectTimeout: 5000,
+        connectTimeout: 10000,
 
         keepalive: 60
     }
 );
-
 // ============================================================
 // MQTT CONNECT
 // ============================================================
