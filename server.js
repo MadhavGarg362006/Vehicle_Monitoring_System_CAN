@@ -4,6 +4,13 @@ const http = require("http");
 const WebSocket = require("ws");
 const mqtt = require("mqtt");
 const { Pool } = require("pg");
+const {
+    decodeCANMessage,
+    getNodeFromCANId,
+    vehicleData,
+    canMessages,
+    gpsStatus
+} = require("./canDecoder");
 
 // ============================================================
 // EXPRESS + WEBSOCKET SERVER
@@ -65,20 +72,7 @@ let latestData = null;
 
 let dashboardCount = 0;
 
-// Current decoded vehicle values
-const vehicleData = {
-    temperature: 0.0,
-    vibration: 0.0,
-    batteryVoltage: 0.0,
-    engineTemp: 0.0,
-    rpm: 0,
-    batteryCurrent: 0.0,
-    speed: 0.0,
-    humidity: 0.0
-};
-
-// CAN message storage
-const canMessages = {};
+// vehicleData and canMessages now live in canDecoder.js
 
 // ============================================================
 // SAVE CAN READING TO NEON
@@ -175,7 +169,7 @@ const mqttClient = mqtt.connect(
 
         clean: true,
 
-        reconnectPeriod: 1000,
+        reconnectPeriod: 5000,
 
         connectTimeout: 10000,
 
@@ -265,293 +259,12 @@ mqttClient.on("close", () => {
 });
 
 // ============================================================
-// CAN DECODER
-// ============================================================
-
-function decodeCANMessage(message) {
-
-    const canId = message.canId;
-
-    const dataString = message.data;
-
-    if (!canId || !dataString) {
-
-        console.log(
-            "[MQTT] Invalid CAN message"
-        );
-
-        return null;
-    }
-
-    // --------------------------------------------------------
-    // Convert:
-    //
-    // "03 24"
-    //
-    // into:
-    //
-    // [0x03, 0x24]
-    // --------------------------------------------------------
-
-    const bytes = dataString
-        .trim()
-        .split(/\s+/)
-        .map(
-            byte =>
-                parseInt(byte, 16)
-        );
-
-    if (bytes.length < 2) {
-
-        console.log(
-            "[MQTT] CAN frame has less than 2 bytes"
-        );
-
-        return null;
-    }
-
-    // --------------------------------------------------------
-    // 2-byte big-endian integer
-    // --------------------------------------------------------
-
-    const raw =
-        (bytes[0] << 8) |
-        bytes[1];
-
-    let value;
-    let signal;
-    let unit;
-
-    // ========================================================
-    // STM32
-    // ========================================================
-
-    if (canId === "0x100") {
-
-        // Engine Temperature
-        // Raw / 10
-
-        value = raw / 10;
-
-        vehicleData.engineTemp =
-            value;
-
-        signal =
-            "Engine Temperature";
-
-        unit =
-            "°C";
-    }
-
-    else if (canId === "0x101") {
-
-        // Engine RPM
-        // Raw / 1
-
-        value = raw;
-
-        vehicleData.rpm =
-            value;
-
-        signal =
-            "Engine RPM";
-
-        unit =
-            "RPM";
-    }
-
-    else if (canId === "0x102") {
-
-        // Vibration
-        // Raw / 100
-
-        value = raw / 100;
-
-        vehicleData.vibration =
-            value;
-
-        signal =
-            "Vibration";
-
-        unit =
-            "g";
-    }
-
-    // ========================================================
-    // ARDUINO
-    // ========================================================
-
-    else if (canId === "0x103") {
-
-        // Ambient Temperature
-        // Raw / 10
-
-        value = raw / 10;
-
-        vehicleData.temperature =
-            value;
-
-        signal =
-            "Ambient Temperature";
-
-        unit =
-            "°C";
-    }
-
-    else if (canId === "0x104") {
-
-        // Humidity
-        // Raw / 10
-
-        value = raw / 10;
-
-        vehicleData.humidity =
-            value;
-
-        signal =
-            "Humidity";
-
-        unit =
-            "%";
-    }
-
-    else if (canId === "0x105") {
-
-        // Vehicle Speed
-        // Raw / 10
-
-        value = raw / 10;
-
-        vehicleData.speed =
-            value;
-
-        signal =
-            "Vehicle Speed";
-
-        unit =
-            "km/h";
-    }
-
-    // ========================================================
-    // ESP32
-    // ========================================================
-
-    else if (canId === "0x106") {
-
-        // Battery Voltage
-        // Raw / 10
-
-        value = raw / 10;
-
-        vehicleData.batteryVoltage =
-            value;
-
-        signal =
-            "Battery Voltage";
-
-        unit =
-            "V";
-    }
-
-    else if (canId === "0x107") {
-
-        // Battery Current
-        // Raw / 10
-
-        value = raw / 10;
-
-        vehicleData.batteryCurrent =
-            value;
-
-        signal =
-            "Battery Current";
-
-        unit =
-            "A";
-    }
-
-    else {
-
-        console.log(
-            "[MQTT] Unknown CAN ID:",
-            canId
-        );
-
-        return null;
-    }
-
-    // ========================================================
-    // STORE CAN MESSAGE
-    // ========================================================
-
-    canMessages[canId] = {
-
-        signal,
-
-        value,
-
-        unit,
-
-        data:
-            dataString
-                .toUpperCase(),
-
-        node:
-            getNodeFromCANId(canId)
-    };
-
-    return {
-
-        canId,
-
-        signal,
-
-        value,
-
-        unit
-    };
-}
-
-// ============================================================
-// CAN NODE IDENTIFICATION
-// ============================================================
-
-function getNodeFromCANId(canId) {
-
-    if (
-        canId === "0x100" ||
-        canId === "0x101" ||
-        canId === "0x102"
-    ) {
-
-        return "STM32";
-    }
-
-    if (
-        canId === "0x103" ||
-        canId === "0x104" ||
-        canId === "0x105"
-    ) {
-
-        return "Arduino";
-    }
-
-    if (
-        canId === "0x106" ||
-        canId === "0x107"
-    ) {
-
-        return "ESP32";
-    }
-
-    return "Unknown";
-}
-
-// ============================================================
 // CREATE TELEMETRY
 // ============================================================
 
 function createTelemetry() {
+
+    const gps = gpsStatus();
 
     return {
 
@@ -584,6 +297,33 @@ function createTelemetry() {
         humidity:
             vehicleData.humidity,
 
+        gas:
+            vehicleData.gas,
+
+        distance:
+            vehicleData.distance,
+
+        accelX:
+            vehicleData.accelX,
+
+        accelY:
+            vehicleData.accelY,
+
+        accelZ:
+            vehicleData.accelZ,
+
+        latitude:
+            vehicleData.latitude,
+
+        longitude:
+            vehicleData.longitude,
+
+        gpsFix:
+            gps.fix,
+
+        gpsAgeMs:
+            gps.ageMs,
+
         canMessages:
             canMessages
     };
@@ -591,131 +331,98 @@ function createTelemetry() {
 
 // ============================================================
 // MQTT MESSAGE
+//
+// Two payload shapes are accepted:
+//   1) one frame:   {"canId":"0x100","dlc":2,"data":"03 24"}
+//   2) a snapshot:  {"t":123,"f":[["0x100","03 24"],["0x101","07 08"]]}
+//      (the Arduino gateway sends this to Adafruit IO, one message per
+//       few seconds, because the free tier allows 30 messages/minute)
 // ============================================================
+
+function framesFromMessage(message) {
+
+    if (message && Array.isArray(message.f)) {
+
+        return message.f
+            .filter((pair) => Array.isArray(pair) && pair.length >= 2)
+            .map(([canId, data]) => ({
+                canId,
+                data,
+                dlc: String(data).trim().split(/\s+/).length
+            }));
+    }
+
+    return [message];
+}
+
+function processFrame(frame) {
+
+    const decoded = decodeCANMessage(frame);
+
+    if (!decoded) {
+        return false;
+    }
+
+    for (const s of decoded.signals) {
+
+        saveCanReading(
+            decoded.canId,
+            decoded.ecu,
+            s.signal,
+            s.value,
+            s.unit,
+            frame.dlc,
+            frame.data
+        );
+
+        console.log(
+            `[CAN] ${decoded.canId} | ${decoded.ecu} | ` +
+            `${s.signal} = ${s.value.toFixed(2)} ${s.unit}`
+        );
+    }
+
+    return true;
+}
 
 mqttClient.on(
     "message",
     (topic, payload) => {
 
-        if (
-            topic !== MQTT_TOPIC
-        ) {
-
+        if (topic !== MQTT_TOPIC) {
             return;
         }
 
         try {
 
-            const message =
-                JSON.parse(
-                    payload.toString()
-                );
+            const message = JSON.parse(payload.toString());
+
+            const frames = framesFromMessage(message);
 
             console.log("--------------------------------------");
-
             console.log(
-                "[MQTT] CAN MESSAGE RECEIVED"
+                `[MQTT] ${frames.length} CAN frame(s) received on ${topic}`
             );
 
-            console.log(
-                "[MQTT] Topic:",
-                topic
-            );
+            let decodedCount = 0;
 
-            console.log(
-                "[MQTT] CAN ID:",
-                message.canId
-            );
+            for (const frame of frames) {
+                if (processFrame(frame)) {
+                    decodedCount++;
+                }
+            }
 
-            console.log(
-                "[MQTT] DLC:",
-                message.dlc
-            );
-
-            console.log(
-                "[MQTT] DATA:",
-                message.data
-            );
-
-            // ==================================================
-            // DECODE CAN FRAME
-            // ==================================================
-
-            const decoded =
-                decodeCANMessage(
-                    message
-                );
-
-            if (!decoded) {
-
+            if (decodedCount === 0) {
                 return;
             }
 
-            // ==================================================
-            // GET ECU
-            // ==================================================
+            // Build and broadcast telemetry once per MQTT message
+            const telemetry = createTelemetry();
 
-            const ecu =
-                getNodeFromCANId(
-                    decoded.canId
-                );
+            telemetry.serverTime = Date.now();
 
-            // ==================================================
-            // SAVE TO NEON DATABASE
-            // ==================================================
+            latestData = telemetry;
 
-            saveCanReading(
-                decoded.canId,
-                ecu,
-                decoded.signal,
-                decoded.value,
-                decoded.unit,
-                message.dlc,
-                message.data
-            );
-
-            // ==================================================
-            // BUILD TELEMETRY
-            // ==================================================
-
-            const telemetry =
-                createTelemetry();
-
-            telemetry.serverTime =
-                Date.now();
-
-            // ==================================================
-            // STORE LATEST TELEMETRY
-            // ==================================================
-
-            latestData =
-                telemetry;
-
-            // ==================================================
-            // LOG DECODED CAN DATA
-            // ==================================================
-
-            console.log(
-                `[CAN] ${decoded.canId} | ` +
-                `${decoded.signal} = ` +
-                `${decoded.value.toFixed(2)} ` +
-                `${decoded.unit}`
-            );
-
-            console.log(
-                `[CAN] ECU: ${ecu}`
-            );
-
-            // ==================================================
-            // BROADCAST TO DASHBOARD
-            // ==================================================
-
-            broadcast(
-                JSON.stringify(
-                    telemetry
-                )
-            );
-
+            broadcast(JSON.stringify(telemetry));
         }
 
         catch (err) {

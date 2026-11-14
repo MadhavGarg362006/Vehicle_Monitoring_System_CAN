@@ -5,3 +5,4 @@ venv/
 node_modules/
 __pycache__/
 *.pyc
+firmware/arduino_gateway/config.h

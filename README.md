@@ -1,104 +1,72 @@
-# Vehicle Health Monitoring Dashboard
+# Vehicle Health Monitoring System (CAN)
 
-## Architecture
+Three microcontrollers act as CAN nodes on one 500 kbit/s classic CAN bus (11-bit IDs).
+The Arduino also works as the gateway: it forwards every CAN frame over MQTT.
 
-ESP32 -> WSS WebSocket relay -> GitHub Pages dashboard
+```
+STM32 Nucleo-F446RE ──┐
+FRDM-MCXN236 ─────────┼── CAN bus ── Arduino UNO R4 WiFi ── MQTT (Adafruit IO)
+Arduino UNO R4 WiFi ──┘                                         │
+                                                      Node server (Render)
+                                                       │              │
+                                              Neon Postgres     WebSocket
+                                                                      │
+                                              Dashboard (GitHub Pages, index.html)
+```
 
-The dashboard displays live numeric values and graphs for:
-- Ambient temperature
-- Vibration
-- Battery voltage
-- Engine temperature
-- Engine RPM
-- Battery current
-- Vehicle speed
-- Humidity
+## Nodes and sensors
 
-## Important architecture point
+| Node | CAN interface | Sensors |
+|------|---------------|---------|
+| Arduino UNO R4 WiFi | MCP2515 (SPI) | DHT20, MQ-2, HC-SR04 ultrasonic, Hall sensor |
+| STM32 Nucleo-F446RE | MCP2515 (SPI) | DHT11, INA219, vibration sensor module |
+| NXP FRDM-MCXN236 | onboard FlexCAN1 + TJA1057 | onboard FXLS8974 accelerometer, GPS (NMEA) |
 
-GitHub Pages is a static hosting service. It hosts the dashboard files but is not the WebSocket backend.
+## CAN IDs (big-endian)
 
-Use:
-- GitHub Pages for `dashboard/index.html`
-- Render Web Service for the Node.js WebSocket relay
-- ESP32 as a WebSocket client
+| ID | Signal | Encoding |
+|----|--------|----------|
+| 0x100 | Engine temp (DHT11 stand-in) | uint16, °C x10 |
+| 0x101 | RPM (Hall) | uint16 |
+| 0x102 | Vibration | uint16, g x100 |
+| 0x103 | Ambient temp (DHT20) | uint16, °C x10 |
+| 0x104 | Humidity (DHT20) | uint16, % x10 |
+| 0x105 | Speed (GPS) | uint16, km/h x10 |
+| 0x106 | Battery voltage (INA219) | uint16, V x10 |
+| 0x107 | Battery current (INA219) | uint16, A x10 |
+| 0x108 | Gas (MQ-2) | uint16, raw ADC |
+| 0x109 | Distance (HC-SR04) | uint16, cm x10 (4000 = no echo) |
+| 0x10A | Acceleration | 3 x int16, milli-g (X, Y, Z) |
+| 0x10B | GPS position | 2 x int32, 1e-6 degree (lat, lon) |
 
-Render supports public WebSocket connections and recommends `wss://` for public connections.
+The NXP node sends 0x105 and 0x10B only while the GPS has a fix. The dashboard shows
+"GPS: CONNECTING…" until then.
 
-## Deploy the relay
+## Repository layout
 
-Repository structure:
+- `index.html` dashboard (GitHub Pages). Has a live GPS status line and a DOWNLOAD CSV button.
+- `server.js`, `canDecoder.js` Node server: MQTT subscriber, CAN decoder, Neon storage, WebSocket relay.
+- `test_decoder.js` run `node test_decoder.js` (prints "all tests passed").
+- `firmware/arduino_gateway` Arduino sketch (copy `config.example.h` to `config.h` and fill it in; `config.h` is git-ignored).
+- `firmware/stm32_node` STM32 sketch (Arduino IDE, STM32duino).
+- `firmware/nxp_frdm_mcxn236` MCUXpresso (SDK flexcan interrupt_transfer example) firmware and guide.
+- `CAN.py`, `Hcl(python).py` simulators / offline demos.
 
-vehicle-health-monitor/
-  dashboard/index.html
-  server/server.js
-  server/package.json
-  esp32/vehicle_health_websocket.ino
+## Adafruit IO
 
-In Render:
-1. New -> Web Service
-2. Connect the GitHub repository
-3. Root Directory: `server`
-4. Build Command: `npm install`
-5. Start Command: `npm start`
-6. Add environment variable:
-   `DEVICE_TOKEN = YOUR_LONG_RANDOM_TOKEN`
+Free accounts allow 30 data points per minute. The gateway therefore publishes one JSON
+snapshot of all frames every 3 s (20 per minute) to a single feed, `vhms-can`:
+`{"t":123,"f":[["0x100","03 24"],["0x101","07 08"]]}`. The server decodes it.
 
-After deployment, suppose the service is:
-`https://vehicle-health-relay.onrender.com`
+## Server environment (`.env.local`, never commit it)
 
-WebSocket endpoint:
-`wss://vehicle-health-relay.onrender.com/ws`
+```
+MQTT_BROKER=mqtts://io.adafruit.com:8883
+MQTT_USERNAME=<Adafruit IO username>
+MQTT_PASSWORD=<Adafruit IO key>
+MQTT_TOPIC=<username>/feeds/vhms-can
+DATABASE_URL=<Neon connection string>
+```
 
-## Configure ESP32
-
-Install `ArduinoWebsockets` by gilmaimon.
-
-Edit the ESP32 sketch:
-- WIFI_SSID
-- WIFI_PASSWORD
-- WS_HOST
-- DEVICE_TOKEN in WS_PATH
-
-Example:
-`const char* WS_HOST="vehicle-health-relay.onrender.com";`
-`const char* WS_PATH="/ws?role=device&token=YOUR_LONG_RANDOM_TOKEN";`
-
-Upload to a normal ESP32.
-
-Serial monitor: 115200.
-
-## Configure GitHub Pages
-
-Edit `dashboard/index.html`:
-
-`const WS_URL="wss://vehicle-health-relay.onrender.com/ws?role=dashboard";`
-
-Push the dashboard folder to GitHub.
-
-Then enable GitHub Pages from repository Settings -> Pages.
-
-## Data format
-
-ESP32 sends:
-
-{
-  "type":"sensor",
-  "time":12.0,
-  "temperature":29.4,
-  "vibration":0.31,
-  "batteryVoltage":13.2,
-  "engineTemp":78.4,
-  "rpm":1900,
-  "batteryCurrent":3.8,
-  "speed":14.2,
-  "humidity":61.5
-}
-
-The relay broadcasts the latest sensor packet to dashboard clients.
-
-## Current limitation
-
-The ESP32 values are simulated. When real sensors are added, replace only the value-generation code. Keep the JSON field names unchanged so the dashboard does not need to change.
-
-The relay stores only the latest packet in RAM; it is not a historical database.
+Run locally with `npm install` then `node server.js`. On Render use the same values as
+environment variables. The dashboard connects to the server over `wss://…/ws?role=dashboard`.
