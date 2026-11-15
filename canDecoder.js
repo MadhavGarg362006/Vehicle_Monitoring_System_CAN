@@ -44,38 +44,38 @@ const sig = (key, signal, value, unit) => ({ key, signal, value, unit });
 const FRAMES = {
     // ---- STM32 Nucleo-F446RE ----
     "0x100": { ecu: "STM32", minBytes: 2, decode: (b) => [
-        sig("engineTemp", "Engine Temperature", u16(b) / 10, "°C")] },
+        sig("engineTemp", "Engine Temp (DHT11)", u16(b) / 10, "°C")] },
     "0x102": { ecu: "STM32", minBytes: 2, decode: (b) => [
-        sig("vibration", "Vibration", u16(b) / 100, "g")] },
+        sig("vibration", "Vibration (sensor module)", u16(b) / 100, "g")] },
     "0x106": { ecu: "STM32", minBytes: 2, decode: (b) => [
-        sig("batteryVoltage", "Battery Voltage", u16(b) / 10, "V")] },
+        sig("batteryVoltage", "Battery Voltage (INA219)", u16(b) / 10, "V")] },
     "0x107": { ecu: "STM32", minBytes: 2, decode: (b) => [
-        sig("batteryCurrent", "Battery Current", u16(b) / 10, "A")] },
+        sig("batteryCurrent", "Battery Current (INA219)", u16(b) / 10, "A")] },
 
     // ---- Arduino UNO R4 WiFi ----
     "0x101": { ecu: "Arduino", minBytes: 2, decode: (b) => [
-        sig("rpm", "Engine RPM", u16(b), "RPM")] },
+        sig("rpm", "Engine RPM (Hall)", u16(b), "RPM")] },
     "0x103": { ecu: "Arduino", minBytes: 2, decode: (b) => [
-        sig("temperature", "Ambient Temperature", u16(b) / 10, "°C")] },
+        sig("temperature", "Ambient Temp (DHT20)", u16(b) / 10, "°C")] },
     "0x104": { ecu: "Arduino", minBytes: 2, decode: (b) => [
-        sig("humidity", "Humidity", u16(b) / 10, "%")] },
+        sig("humidity", "Humidity (DHT20)", u16(b) / 10, "%")] },
     "0x108": { ecu: "Arduino", minBytes: 2, decode: (b) => [
         sig("gas", "Gas Level (MQ-2)", u16(b), "ADC")] },
     "0x109": { ecu: "Arduino", minBytes: 2, decode: (b) => [
-        sig("distance", "Obstacle Distance", u16(b) / 10, "cm")] },
+        sig("distance", "Distance (HC-SR04)", u16(b) / 10, "cm")] },
 
     // ---- NXP FRDM-MCXN236 ----
     "0x105": { ecu: "MCXN236", minBytes: 2, decode: (b) => [
-        sig("speed", "Vehicle Speed", u16(b) / 10, "km/h")] },
+        sig("speed", "Speed (GPS)", u16(b) / 10, "km/h")] },
     // 3 x int16, milli-g
     "0x10A": { ecu: "MCXN236", minBytes: 6, decode: (b) => [
-        sig("accelX", "Acceleration X", i16(b, 0) / 1000, "g"),
-        sig("accelY", "Acceleration Y", i16(b, 2) / 1000, "g"),
-        sig("accelZ", "Acceleration Z", i16(b, 4) / 1000, "g")] },
+        sig("accelX", "Acceleration X (FXLS8974)", i16(b, 0) / 1000, "g"),
+        sig("accelY", "Acceleration Y (FXLS8974)", i16(b, 2) / 1000, "g"),
+        sig("accelZ", "Acceleration Z (FXLS8974)", i16(b, 4) / 1000, "g")] },
     // 2 x int32, 1e-6 degree
     "0x10B": { ecu: "MCXN236", minBytes: 8, decode: (b) => [
-        sig("latitude", "Latitude", i32(b, 0) / 1e6, "°"),
-        sig("longitude", "Longitude", i32(b, 4) / 1e6, "°")] }
+        sig("latitude", "Latitude (GPS)", i32(b, 0) / 1e6, "°"),
+        sig("longitude", "Longitude (GPS)", i32(b, 4) / 1e6, "°")] }
 };
 
 function normalizeCanId(raw) {
