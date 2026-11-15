@@ -1,4 +1,4 @@
-::: {align="center"}
+
 # Vehicle Health Monitoring System (VHMS)
 
 **Distributed Embedded Monitoring • Classical CAN • MQTT • Cloud Backend
@@ -7,7 +7,7 @@
 A multi-controller vehicle-monitoring prototype integrating STM32,
 Arduino UNO R4 WiFi, NXP FRDM-MCXN236, Adafruit IO, Node.js, Neon
 PostgreSQL and WebSockets.
-:::
+
 
 ------------------------------------------------------------------------
 
