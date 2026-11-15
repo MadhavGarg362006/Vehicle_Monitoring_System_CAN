@@ -116,7 +116,7 @@ static float readDistanceCm() {
   digitalWrite(PIN_TRIG, HIGH);
   delayMicroseconds(10);
   digitalWrite(PIN_TRIG, LOW);
-  unsigned long us = pulseIn(PIN_ECHO, HIGH, 25000UL);
+  unsigned long us = pulseIn(PIN_ECHO, HIGH, 12000UL);
   if (us == 0) return 400.0f;                              // no echo
   float cm = us * 0.0343f / 2.0f;
   return cm > 400.0f ? 400.0f : cm;
@@ -275,20 +275,26 @@ void loop() {
   if (millis() - lastSensorMs >= SENSOR_INTERVAL_MS) {
     lastSensorMs = millis();
 
+    // The MCP2515 only has 2 receive buffers. Empty them between every slow step
+    // so a burst of frames from the other nodes is not lost.
+    drainCanRx();
     if (dht.read() == DHT20_OK) {
       ambientC    = dht.getTemperature();
       humidityPct = dht.getHumidity();
     }
+    drainCanRx();
 
     uint16_t rpm  = readRpm();
     uint16_t gas  = (uint16_t)analogRead(PIN_MQ2);
+    drainCanRx();
     float    dist = readDistanceCm();
+    drainCanRx();
 
-    sendU16(ID_AMB_T, scale10(ambientC));
-    sendU16(ID_HUM,   scale10(humidityPct));
-    sendU16(ID_RPM,   rpm);
-    sendU16(ID_GAS,   gas);
-    sendU16(ID_DIST,  scale10(dist));
+    sendU16(ID_AMB_T, scale10(ambientC)); drainCanRx();
+    sendU16(ID_HUM,   scale10(humidityPct)); drainCanRx();
+    sendU16(ID_RPM,   rpm); drainCanRx();
+    sendU16(ID_GAS,   gas); drainCanRx();
+    sendU16(ID_DIST,  scale10(dist)); drainCanRx();
 
     Serial.print("T=");   Serial.print(ambientC, 1);
     Serial.print(" H=");  Serial.print(humidityPct, 1);

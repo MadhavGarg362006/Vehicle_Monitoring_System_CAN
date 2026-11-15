@@ -82,7 +82,7 @@ static void sendU16(uint16_t id, uint16_t raw) {
     Serial.print("CAN TX failed for 0x");
     Serial.println(id, HEX);
   }
-  delay(2);                               // let the TX buffer drain
+  delay(8);                               // let the TX buffer drain and give the gateway time to read each frame
 }
 
 static float readVibrationG() {
