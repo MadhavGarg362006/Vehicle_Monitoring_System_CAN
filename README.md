@@ -18,7 +18,7 @@ Arduino UNO R4 WiFi ──┘                                         │
 
 | Node | CAN interface | Sensors |
 |------|---------------|---------|
-| Arduino UNO R4 WiFi | MCP2515 (SPI) | DHT20, MQ-2, HC-SR04 ultrasonic, Hall sensor |
+| Arduino UNO R4 WiFi | MCP2515 (SPI) | BMP280, MQ-2, HC-SR04 ultrasonic, Hall sensor |
 | STM32 Nucleo-F446RE | MCP2515 (SPI) | DHT11, INA219, vibration sensor module |
 | NXP FRDM-MCXN236 | onboard FlexCAN1 + TJA1057 | onboard FXLS8974 accelerometer, GPS (NMEA) |
 
@@ -29,8 +29,8 @@ Arduino UNO R4 WiFi ──┘                                         │
 | 0x100 | Engine temp (DHT11 stand-in) | uint16, °C x10 |
 | 0x101 | RPM (Hall) | uint16 |
 | 0x102 | Vibration | uint16, g x100 |
-| 0x103 | Ambient temp (DHT20) | uint16, °C x10 |
-| 0x104 | Humidity (DHT20) | uint16, % x10 |
+| 0x103 | Ambient temp (BMP280) | uint16, °C x10 |
+| 0x104 | Pressure (BMP280) | uint16, hPa x10 |
 | 0x105 | Speed (GPS) | uint16, km/h x10 |
 | 0x106 | Battery voltage (INA219) | uint16, V x10 |
 | 0x107 | Battery current (INA219) | uint16, A x10 |

@@ -294,8 +294,8 @@ function createTelemetry() {
         speed:
             vehicleData.speed,
 
-        humidity:
-            vehicleData.humidity,
+        pressure:
+            vehicleData.pressure,
 
         gas:
             vehicleData.gas,

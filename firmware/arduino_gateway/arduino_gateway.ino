@@ -2,7 +2,7 @@
   VHMS node: Arduino UNO R4 WiFi  (sensors + CAN node + Adafruit IO gateway)
 
   Sensors on this board
-    DHT20 (I2C)        -> 0x103 ambient temp (x10, degC)   0x104 humidity (x10, %)
+    BMP280 (I2C)       -> 0x103 ambient temp (x10, degC)   0x104 pressure (x10, hPa)
     Hall effect (D3)   -> 0x101 engine RPM (x1)
     MQ-2 (A0)          -> 0x108 gas level, raw ADC 0..1023
     HC-SR04            -> 0x109 distance (x10, cm), 400.0 when no echo
@@ -17,7 +17,7 @@
 
   CAN: MCP2515 (8 MHz crystal) on SPI, 500 kbit/s, standard 11-bit IDs.
 
-  Libraries: mcp2515 (autowp), ArduinoMqttClient, DHT20 (Rob Tillaart).
+  Libraries: mcp2515 (autowp), ArduinoMqttClient, Adafruit BMP280 Library (+ Adafruit Unified Sensor, Adafruit BusIO).
   WiFiS3 comes with the UNO R4 board package.
 */
 
@@ -26,7 +26,7 @@
 #include <WiFiS3.h>
 #include <ArduinoMqttClient.h>
 #include <mcp2515.h>
-#include <DHT20.h>
+#include <Adafruit_BMP280.h>
 #include "config.h"
 
 #if SNAPSHOT_INTERVAL_MS < 2000
@@ -43,7 +43,7 @@ const uint8_t PIN_HALL   = 3;    // interrupt capable
 // ---------------- CAN IDs ----------------
 const uint16_t ID_RPM   = 0x101;
 const uint16_t ID_AMB_T = 0x103;
-const uint16_t ID_HUM   = 0x104;
+const uint16_t ID_PRESS = 0x104;
 const uint16_t ID_GAS   = 0x108;
 const uint16_t ID_DIST  = 0x109;
 
@@ -61,7 +61,8 @@ LatestFrame latest[NUM_IDS];
 
 // ---------------- Objects ----------------
 MCP2515 mcp2515(PIN_CAN_CS);
-DHT20   dht(&Wire);
+Adafruit_BMP280 bmp(&Wire);
+bool bmpOk = false;
 
 #if AIO_USE_TLS
 WiFiSSLClient netClient;
@@ -77,7 +78,7 @@ char topicThrottle[64];
 char topicErrors[64];
 
 // ---------------- State ----------------
-float ambientC = 0, humidityPct = 0;       // last good DHT20 values
+float ambientC = 0, pressureHpa = 0;       // last good BMP280 values
 
 volatile uint32_t hallLastUs   = 0;
 volatile uint32_t hallPeriodUs = 0;
@@ -254,7 +255,15 @@ void setup() {
   attachInterrupt(digitalPinToInterrupt(PIN_HALL), hallISR, FALLING);
 
   Wire.begin();
-  if (!dht.begin()) Serial.println("DHT20 not found: check I2C wiring");
+  // BMP280 I2C address is 0x76 (SDO to GND) or 0x77 (SDO to 3.3V)
+  bmpOk = bmp.begin(0x76) || bmp.begin(0x77);
+  if (bmpOk) {
+    bmp.setSampling(Adafruit_BMP280::MODE_NORMAL, Adafruit_BMP280::SAMPLING_X2,
+                    Adafruit_BMP280::SAMPLING_X16, Adafruit_BMP280::FILTER_X16,
+                    Adafruit_BMP280::STANDBY_MS_500);
+  } else {
+    Serial.println("BMP280 not found: check VCC 3.3V, GND, SDA, SCL (and SDO/CSB). A BME280 will not work with this check.");
+  }
 
   SPI.begin();
   mcp2515.reset();
@@ -278,9 +287,13 @@ void loop() {
     // The MCP2515 only has 2 receive buffers. Empty them between every slow step
     // so a burst of frames from the other nodes is not lost.
     drainCanRx();
-    if (dht.read() == DHT20_OK) {
-      ambientC    = dht.getTemperature();
-      humidityPct = dht.getHumidity();
+    if (bmpOk) {
+      float t = bmp.readTemperature();
+      float p = bmp.readPressure() / 100.0f;           // Pa -> hPa
+      if (!isnan(t) && !isnan(p) && p > 300.0f && p < 1100.0f) {
+        ambientC    = t;
+        pressureHpa = p;
+      }
     }
     drainCanRx();
 
@@ -291,13 +304,13 @@ void loop() {
     drainCanRx();
 
     sendU16(ID_AMB_T, scale10(ambientC)); drainCanRx();
-    sendU16(ID_HUM,   scale10(humidityPct)); drainCanRx();
+    sendU16(ID_PRESS, scale10(pressureHpa)); drainCanRx();
     sendU16(ID_RPM,   rpm); drainCanRx();
     sendU16(ID_GAS,   gas); drainCanRx();
     sendU16(ID_DIST,  scale10(dist)); drainCanRx();
 
     Serial.print("T=");   Serial.print(ambientC, 1);
-    Serial.print(" H=");  Serial.print(humidityPct, 1);
+    Serial.print(" P=");  Serial.print(pressureHpa, 1); Serial.print("hPa");
     Serial.print(" RPM=");Serial.print(rpm);
     Serial.print(" MQ2=");Serial.print(gas);
     Serial.print(" D=");  Serial.print(dist, 1);
