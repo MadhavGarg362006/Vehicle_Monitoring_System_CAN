@@ -17,7 +17,8 @@ const vehicleData = {
     rpm: 0,                 // 0x101
     batteryCurrent: 0.0,    // 0x107
     speed: 0.0,             // 0x105
-    pressure: 0.0,          // 0x104 (hPa)
+    humidity: 0.0,          // 0x104
+    pressure: 0.0,          // 0x10C (hPa)
     gas: 0,                 // 0x108
     distance: 0.0,          // 0x109
     accelX: 0.0,            // 0x10A
@@ -56,9 +57,11 @@ const FRAMES = {
     "0x101": { ecu: "Arduino", minBytes: 2, decode: (b) => [
         sig("rpm", "Engine RPM (Hall)", u16(b), "RPM")] },
     "0x103": { ecu: "Arduino", minBytes: 2, decode: (b) => [
-        sig("temperature", "Ambient Temp (BMP280)", u16(b) / 10, "°C")] },
+        sig("temperature", "Ambient Temp (BME280)", u16(b) / 10, "°C")] },
     "0x104": { ecu: "Arduino", minBytes: 2, decode: (b) => [
-        sig("pressure", "Pressure (BMP280)", u16(b) / 10, "hPa")] },
+        sig("humidity", "Humidity (BME280)", u16(b) / 10, "%")] },
+    "0x10C": { ecu: "Arduino", minBytes: 2, decode: (b) => [
+        sig("pressure", "Pressure (BME280)", u16(b) / 10, "hPa")] },
     "0x108": { ecu: "Arduino", minBytes: 2, decode: (b) => [
         sig("gas", "Gas Level (MQ-2)", u16(b), "ADC")] },
     "0x109": { ecu: "Arduino", minBytes: 2, decode: (b) => [
