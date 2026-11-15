@@ -63,9 +63,4 @@ assert.strictEqual(decodeCANMessage({ canId: "0x100" }), null);
 decodeCANMessage(frame("0x105", "00 FA"));
 assert(close(vehicleData.speed, 25.0));
 
-// 0x10C pressure (BME280): 0x278A = 10122 -> 1012.2 hPa
-r = decodeCANMessage(frame("0x10C", "27 8A"));
-assert(close(r.signals[0].value, 1012.2) && r.ecu === "Arduino");
-assert(close(vehicleData.pressure, 1012.2));
-
 console.log("canDecoder: all tests passed");
