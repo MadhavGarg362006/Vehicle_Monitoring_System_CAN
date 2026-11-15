@@ -8,7 +8,7 @@ A multi-controller vehicle-monitoring prototype integrating STM32, Arduino UNO R
 
 ## 🎥 Demo Video
 
-<!-- Add the demo video link here when available. -->
+<!-- https://youtu.be/Q7OKYdUc8i8 -->
 
 ------------------------------------------------------------------------
 
