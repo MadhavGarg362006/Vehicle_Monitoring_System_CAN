@@ -663,15 +663,20 @@ Vehicle_Monitoring_System_CAN/
 ├── README.md
 ├── package.json
 ├── package-lock.json
-├── server.js
-├── canDecoder.js
-├── test_decoder.js
+├── server.js            (root shim -> js/server.js, keeps `node server.js` working)
 ├── index.html
-├── Virtual_CAN_Simulation.py
-├── Test_Readings_Graphs.py
-├── 2026_red_bull_racing_rb22.glb
+│
+├── js/
+│   ├── server.js
+│   ├── canDecoder.js
+│   └── test_decoder.js
+│
+├── simulator/
+│   ├── Virtual_CAN_Simulation.py
+│   └── Test_Readings_Graphs.py
 │
 ├── images/
+│   ├── 2026_red_bull_racing_rb22.glb
 │   ├── adafruit-io-feed.png
 │   ├── arduino-serial-monitor.png
 │   ├── arduino-uno-r4-wifi.jpg
@@ -746,7 +751,7 @@ Render's environment-variable settings.
 
 ``` bash
 npm install
-node server.js
+npm start        # runs node js/server.js
 ```
 
 ## 12.5 Flash the embedded nodes
